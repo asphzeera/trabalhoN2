@@ -375,18 +375,9 @@ public class ContainerApp extends BorderPane {
             gc.setLineDashes(6.0, 4.0);
             gc.strokeLine(ultimo.getX(), ultimo.getY(), targetX, targetY);
             gc.setLineDashes((double[]) null);
-
-            // Etiqueta de distância no meio da linha elástica
-            double dist = ultimo.distancia(new Ponto(targetX, targetY));
-            if (dist > 18.0) {
-                double midX = (ultimo.getX() + targetX) / 2.0;
-                double midY = (ultimo.getY() + targetY) / 2.0;
-                desenharEtiquetaFlutuante(gc, String.format("%.0f px", dist), midX + 8, midY - 8,
-                        Color.rgb(38, 50, 56, 0.85), Color.WHITE);
-            }
         }
 
-        // 4. Desenhar cada vértice já criado com destaque e numeração (P1, P2, ...)
+        // 4. Desenhar cada vértice já criado com seu marcador visual
         for (int i = 0; i < pts.size(); i++) {
             Ponto p = pts.get(i);
             boolean ehPrimeiro = (i == 0);
@@ -408,28 +399,11 @@ public class ContainerApp extends BorderPane {
                 // Alça e ponto para os demais vértices
                 desenharAlca(gc, p.getX(), p.getY());
             }
-
-            // Numeração discreta P1, P2, P3...
-            String labelPonto = ehPrimeiro ? "P1 (Início)" : "P" + (i + 1);
-            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
-            gc.setFill(ehPrimeiro ? Color.rgb(21, 101, 192) : Color.rgb(69, 90, 100));
-            gc.fillText(labelPonto, p.getX() + 10, p.getY() - 6);
-        }
-
-        // 5. Dica de fechamento quando o cursor está sobre o primeiro vértice
-        if (podeFecharNoPrimeiro) {
-            desenharEtiquetaFlutuante(gc, "✓ Clique para fechar polígono",
-                    primeiro.getX() + 16, primeiro.getY() + 18,
-                    Color.rgb(46, 125, 50, 0.95), Color.WHITE);
-        } else if (pts.size() == 1 && mouseNoCanvas) {
-            desenharEtiquetaFlutuante(gc, "1º ponto fixado! Clique em outro local para o 2º ponto",
-                    primeiro.getX() + 14, primeiro.getY() + 20,
-                    Color.rgb(25, 118, 210, 0.9), Color.WHITE);
         }
     }
 
     /**
-     * Desenha linha guia de raio e medida ao inserir Círculo, Quadrado ou Hexágono.
+     * Desenha linha guia de raio ao inserir Círculo, Quadrado ou Hexágono.
      */
     private void desenharDicasInsercaoForma(GraphicsContext gc, FerramentaInserirForma fIns) {
         Ponto centro = fIns.getCentroInsercao();
@@ -437,7 +411,6 @@ public class ContainerApp extends BorderPane {
 
         double snapX = contexto.aplicarSnap(mouseCanvasX);
         double snapY = contexto.aplicarSnap(mouseCanvasY);
-        double raio = centro.distancia(new Ponto(snapX, snapY));
 
         // Ponto central
         gc.setFill(Color.rgb(25, 118, 210));
@@ -449,9 +422,6 @@ public class ContainerApp extends BorderPane {
         gc.setLineDashes(4.0, 4.0);
         gc.strokeLine(centro.getX(), centro.getY(), snapX, snapY);
         gc.setLineDashes((double[]) null);
-
-        desenharEtiquetaFlutuante(gc, String.format("Raio: %.1f px", raio),
-                snapX + 12, snapY - 10, Color.rgb(25, 118, 210, 0.9), Color.WHITE);
     }
 
     /**
@@ -472,8 +442,6 @@ public class ContainerApp extends BorderPane {
                     gc.setStroke(Color.rgb(230, 81, 0));
                     gc.setLineWidth(2.0);
                     gc.strokeOval(p.getX() - 10, p.getY() - 10, 20, 20);
-                    desenharEtiquetaFlutuante(gc, "Arraste para mover vértice",
-                            p.getX() + 14, p.getY() - 10, Color.rgb(230, 81, 0, 0.92), Color.WHITE);
                 } else {
                     desenharAlca(gc, p.getX(), p.getY());
                 }
@@ -500,21 +468,6 @@ public class ContainerApp extends BorderPane {
             gc.setStroke(Color.rgb(25, 118, 210, 0.4));
             gc.strokeOval(sx - 6, sy - 6, 12, 12);
         }
-    }
-
-    /**
-     * Desenha um pequeno balão/pílula de texto para dicas flutuantes no Canvas.
-     */
-    private void desenharEtiquetaFlutuante(GraphicsContext gc, String texto, double x, double y, Color fundo, Color corTexto) {
-        double larguraEstimada = texto.length() * 6.5 + 14;
-        double altura = 20;
-
-        gc.setFill(fundo);
-        gc.fillRoundRect(x, y - altura + 4, larguraEstimada, altura, 8, 8);
-
-        gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 11));
-        gc.setFill(corTexto);
-        gc.fillText(texto, x + 7, y);
     }
 
     /**
