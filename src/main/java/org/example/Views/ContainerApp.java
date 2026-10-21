@@ -14,6 +14,8 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.example.Controller.*;
@@ -34,6 +36,11 @@ public class ContainerApp extends BorderPane {
     private PainelStatusView painelStatus;
     private final PersistenciaService persistenciaService;
     private Stage stagePrincipal;
+
+    // Rastreamento do cursor para dicas visuais em tempo real
+    private double mouseCanvasX = 0.0;
+    private double mouseCanvasY = 0.0;
+    private boolean mouseNoCanvas = false;
 
     public ContainerApp() {
         this(null);
@@ -126,35 +133,61 @@ public class ContainerApp extends BorderPane {
      * Inicializa os ouvintes de eventos de mouse no canvas e teclado global.
      */
     public void inicializarEventos() {
+        areaDeDesenho.setOnMouseEntered(e -> {
+            mouseNoCanvas = true;
+            redesenharCanvas();
+        });
+
+        areaDeDesenho.setOnMouseExited(e -> {
+            mouseNoCanvas = false;
+            redesenharCanvas();
+        });
+
         areaDeDesenho.setOnMousePressed(e -> {
+            mouseCanvasX = e.getX();
+            mouseCanvasY = e.getY();
             if (contexto.getFerramentaAtual() != null) {
                 contexto.getFerramentaAtual().aoPressionarMouse(e, contexto);
             }
             painelStatus.setCoordenadasMouse(e.getX(), e.getY());
+            redesenharCanvas();
         });
 
         areaDeDesenho.setOnMouseDragged(e -> {
+            mouseCanvasX = e.getX();
+            mouseCanvasY = e.getY();
             if (contexto.getFerramentaAtual() != null) {
                 contexto.getFerramentaAtual().aoArrastarMouse(e, contexto);
             }
             painelStatus.setCoordenadasMouse(e.getX(), e.getY());
+            redesenharCanvas();
         });
 
         areaDeDesenho.setOnMouseReleased(e -> {
+            mouseCanvasX = e.getX();
+            mouseCanvasY = e.getY();
             if (contexto.getFerramentaAtual() != null) {
                 contexto.getFerramentaAtual().aoSoltarMouse(e, contexto);
             }
             painelStatus.setCoordenadasMouse(e.getX(), e.getY());
+            redesenharCanvas();
         });
 
         areaDeDesenho.setOnMouseClicked(e -> {
+            mouseCanvasX = e.getX();
+            mouseCanvasY = e.getY();
             if (contexto.getFerramentaAtual() != null) {
                 contexto.getFerramentaAtual().aoClicar(e, contexto);
             }
+            redesenharCanvas();
         });
 
         areaDeDesenho.setOnMouseMoved(e -> {
+            mouseCanvasX = e.getX();
+            mouseCanvasY = e.getY();
+            mouseNoCanvas = true;
             painelStatus.setCoordenadasMouse(e.getX(), e.getY());
+            redesenharCanvas();
         });
 
         // Atalhos de teclado
@@ -162,6 +195,17 @@ public class ContainerApp extends BorderPane {
     }
 
     private void processarAtalhosTeclado(KeyEvent event) {
+        if (event.getCode() == KeyCode.ESCAPE) {
+            if (contexto.getFormaEmAndamento() != null) {
+                contexto.setFormaEmAndamento(null);
+                event.consume();
+            } else {
+                contexto.limparSelecao();
+                event.consume();
+            }
+            return;
+        }
+
         if (event.isControlDown()) {
             if (event.getCode() == KeyCode.Z) {
                 contexto.desfazer();
@@ -189,7 +233,7 @@ public class ContainerApp extends BorderPane {
     }
 
     /**
-     * Limpa e redesenha a grade, formas existentes, prévias e destaques de seleção.
+     * Limpa e redesenha a grade, formas existentes, prévias e dicas visuais interativas.
      */
     private void redesenharCanvas() {
         GraphicsContext gc = areaDeDesenho.getGraphicsContext2D();
@@ -211,21 +255,28 @@ public class ContainerApp extends BorderPane {
             desenharForma(forma, estaSelecionada);
         }
 
-        // Desenhar forma em andamento (criação dinâmica)
+        // Dicas visuais para a ferramenta Editar Vértice
+        if (contexto.getFerramentaAtual() instanceof FerramentaEditarVertice) {
+            desenharDicasEdicaoVertice(gc);
+        }
+
+        // Desenhar forma em andamento (criação dinâmica) e dicas visuais de construção
         FormaGeometrica emAndamento = contexto.getFormaEmAndamento();
         if (emAndamento != null) {
-            desenharForma(emAndamento, false);
-            // Desenhar linhas guia para polígono em construção
-            if (emAndamento instanceof Poligono && emAndamento.getQuantidadePontos() > 0) {
-                gc.setStroke(Color.rgb(30, 136, 229, 0.7));
-                gc.setLineWidth(1.5);
-                gc.setLineDashes(4.0);
-                List<Ponto> pts = emAndamento.getPontos();
-                for (int i = 0; i < pts.size() - 1; i++) {
-                    gc.strokeLine(pts.get(i).getX(), pts.get(i).getY(), pts.get(i + 1).getX(), pts.get(i + 1).getY());
+            if (emAndamento instanceof Poligono) {
+                desenharPoligonoEmConstrucao(gc, (Poligono) emAndamento);
+            } else {
+                desenharForma(emAndamento, false);
+                if (contexto.getFerramentaAtual() instanceof FerramentaInserirForma) {
+                    desenharDicasInsercaoForma(gc, (FerramentaInserirForma) contexto.getFerramentaAtual());
                 }
-                gc.setLineDashes((double[]) null);
             }
+        }
+
+        // Mira magnética de precisão no cursor quando ferramentas de criação estão ativas
+        if (mouseNoCanvas && (contexto.getFerramentaAtual() instanceof FerramentaDesenhar
+                || contexto.getFerramentaAtual() instanceof FerramentaInserirForma)) {
+            desenharMiraCursor(gc);
         }
 
         // Desenhar retângulo elástico de seleção se a ferramenta de seleção estiver ativa
@@ -246,6 +297,267 @@ public class ContainerApp extends BorderPane {
                 gc.setLineDashes((double[]) null);
             }
         }
+
+        // Banner superior com dica contextual da ferramenta ativa
+        desenharBannerDicaFerramenta(gc, w);
+    }
+
+    /**
+     * Renderiza todas as dicas visuais durante o desenho ponto a ponto de um Polígono:
+     * - Prévia translúcida da área preenchida com a posição atual do mouse
+     * - Segmentos já confirmados e linha elástica (rubber-band) até o cursor
+     * - Medida em pixels do segmento atual
+     * - Numeração dos vértices (P1, P2, ...) e anel magnético verde no ponto inicial (P1) para fechar
+     */
+    private void desenharPoligonoEmConstrucao(GraphicsContext gc, Poligono poli) {
+        List<Ponto> pts = poli.getPontos();
+        if (pts.isEmpty()) return;
+
+        double snapX = contexto.aplicarSnap(mouseCanvasX);
+        double snapY = contexto.aplicarSnap(mouseCanvasY);
+        Ponto cursorSnap = new Ponto(snapX, snapY);
+        Ponto primeiro = pts.get(0);
+        Ponto ultimo = pts.get(pts.size() - 1);
+
+        boolean podeFecharNoPrimeiro = mouseNoCanvas && pts.size() >= 3 && primeiro.distancia(cursorSnap) < 15.0;
+        double targetX = podeFecharNoPrimeiro ? primeiro.getX() : snapX;
+        double targetY = podeFecharNoPrimeiro ? primeiro.getY() : snapY;
+
+        // 1. Prévia semitransparente do preenchimento do polígono incluindo a posição do cursor
+        if (pts.size() >= 2 && mouseNoCanvas) {
+            int totalPts = pts.size() + 1;
+            double[] px = new double[totalPts];
+            double[] py = new double[totalPts];
+            for (int i = 0; i < pts.size(); i++) {
+                px[i] = pts.get(i).getX();
+                py[i] = pts.get(i).getY();
+            }
+            px[pts.size()] = targetX;
+            py[pts.size()] = targetY;
+
+            Color corBase;
+            try {
+                corBase = Color.web(poli.getCorPreenchimentoHex());
+            } catch (Exception e) {
+                corBase = Color.LIGHTBLUE;
+            }
+            gc.setFill(Color.color(corBase.getRed(), corBase.getGreen(), corBase.getBlue(), 0.28));
+            gc.fillPolygon(px, py, totalPts);
+
+            // Linha tracejada suave simulando o fechamento de volta ao ponto P1
+            gc.setStroke(Color.rgb(120, 144, 156, 0.55));
+            gc.setLineWidth(1.2);
+            gc.setLineDashes(3.0, 5.0);
+            gc.strokeLine(targetX, targetY, primeiro.getX(), primeiro.getY());
+            gc.setLineDashes((double[]) null);
+        }
+
+        // 2. Desenhar arestas já clicadas com a cor e espessura escolhidas
+        if (pts.size() >= 2) {
+            Color bordaCor;
+            try {
+                bordaCor = Color.web(poli.getCorBordaHex());
+            } catch (Exception e) {
+                bordaCor = Color.DARKSLATEGRAY;
+            }
+            gc.setStroke(bordaCor);
+            gc.setLineWidth(poli.getEspessuraBorda());
+            gc.setLineDashes((double[]) null);
+            for (int i = 0; i < pts.size() - 1; i++) {
+                gc.strokeLine(pts.get(i).getX(), pts.get(i).getY(), pts.get(i + 1).getX(), pts.get(i + 1).getY());
+            }
+        }
+
+        // 3. Linha elástica (rubber-band) do último ponto clicado até o cursor
+        if (mouseNoCanvas) {
+            gc.setStroke(podeFecharNoPrimeiro ? Color.rgb(46, 125, 50, 0.9) : Color.rgb(30, 136, 229, 0.9));
+            gc.setLineWidth(1.8);
+            gc.setLineDashes(6.0, 4.0);
+            gc.strokeLine(ultimo.getX(), ultimo.getY(), targetX, targetY);
+            gc.setLineDashes((double[]) null);
+
+            // Etiqueta de distância no meio da linha elástica
+            double dist = ultimo.distancia(new Ponto(targetX, targetY));
+            if (dist > 18.0) {
+                double midX = (ultimo.getX() + targetX) / 2.0;
+                double midY = (ultimo.getY() + targetY) / 2.0;
+                desenharEtiquetaFlutuante(gc, String.format("%.0f px", dist), midX + 8, midY - 8,
+                        Color.rgb(38, 50, 56, 0.85), Color.WHITE);
+            }
+        }
+
+        // 4. Desenhar cada vértice já criado com destaque e numeração (P1, P2, ...)
+        for (int i = 0; i < pts.size(); i++) {
+            Ponto p = pts.get(i);
+            boolean ehPrimeiro = (i == 0);
+
+            if (ehPrimeiro) {
+                // Anel externo no ponto inicial P1
+                double raioAnel = podeFecharNoPrimeiro ? 13.0 : 9.0;
+                gc.setFill(podeFecharNoPrimeiro ? Color.rgb(76, 175, 80, 0.28) : Color.rgb(30, 136, 229, 0.18));
+                gc.fillOval(p.getX() - raioAnel, p.getY() - raioAnel, raioAnel * 2, raioAnel * 2);
+
+                gc.setStroke(podeFecharNoPrimeiro ? Color.rgb(46, 125, 50) : Color.rgb(25, 118, 210));
+                gc.setLineWidth(podeFecharNoPrimeiro ? 2.2 : 1.5);
+                gc.strokeOval(p.getX() - raioAnel, p.getY() - raioAnel, raioAnel * 2, raioAnel * 2);
+
+                // Ponto central P1
+                gc.setFill(podeFecharNoPrimeiro ? Color.rgb(46, 125, 50) : Color.rgb(25, 118, 210));
+                gc.fillOval(p.getX() - 4.5, p.getY() - 4.5, 9, 9);
+            } else {
+                // Alça e ponto para os demais vértices
+                desenharAlca(gc, p.getX(), p.getY());
+            }
+
+            // Numeração discreta P1, P2, P3...
+            String labelPonto = ehPrimeiro ? "P1 (Início)" : "P" + (i + 1);
+            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
+            gc.setFill(ehPrimeiro ? Color.rgb(21, 101, 192) : Color.rgb(69, 90, 100));
+            gc.fillText(labelPonto, p.getX() + 10, p.getY() - 6);
+        }
+
+        // 5. Dica de fechamento quando o cursor está sobre o primeiro vértice
+        if (podeFecharNoPrimeiro) {
+            desenharEtiquetaFlutuante(gc, "✓ Clique para fechar polígono",
+                    primeiro.getX() + 16, primeiro.getY() + 18,
+                    Color.rgb(46, 125, 50, 0.95), Color.WHITE);
+        } else if (pts.size() == 1 && mouseNoCanvas) {
+            desenharEtiquetaFlutuante(gc, "1º ponto fixado! Clique em outro local para o 2º ponto",
+                    primeiro.getX() + 14, primeiro.getY() + 20,
+                    Color.rgb(25, 118, 210, 0.9), Color.WHITE);
+        }
+    }
+
+    /**
+     * Desenha linha guia de raio e medida ao inserir Círculo, Quadrado ou Hexágono.
+     */
+    private void desenharDicasInsercaoForma(GraphicsContext gc, FerramentaInserirForma fIns) {
+        Ponto centro = fIns.getCentroInsercao();
+        if (centro == null) return;
+
+        double snapX = contexto.aplicarSnap(mouseCanvasX);
+        double snapY = contexto.aplicarSnap(mouseCanvasY);
+        double raio = centro.distancia(new Ponto(snapX, snapY));
+
+        // Ponto central
+        gc.setFill(Color.rgb(25, 118, 210));
+        gc.fillOval(centro.getX() - 4, centro.getY() - 4, 8, 8);
+
+        // Linha tracejada do centro até a borda/cursor
+        gc.setStroke(Color.rgb(25, 118, 210, 0.85));
+        gc.setLineWidth(1.5);
+        gc.setLineDashes(4.0, 4.0);
+        gc.strokeLine(centro.getX(), centro.getY(), snapX, snapY);
+        gc.setLineDashes((double[]) null);
+
+        desenharEtiquetaFlutuante(gc, String.format("Raio: %.1f px", raio),
+                snapX + 12, snapY - 10, Color.rgb(25, 118, 210, 0.9), Color.WHITE);
+    }
+
+    /**
+     * Destaca todos os vértices editáveis e ilumina aquele que está sob o cursor.
+     */
+    private void desenharDicasEdicaoVertice(GraphicsContext gc) {
+        List<FormaGeometrica> candidatas = !contexto.getSelecionados().isEmpty()
+                ? contexto.getSelecionados()
+                : contexto.getFormas();
+
+        Ponto cursor = new Ponto(mouseCanvasX, mouseCanvasY);
+        for (FormaGeometrica forma : candidatas) {
+            for (Ponto p : forma.getPontos()) {
+                boolean sobMouse = mouseNoCanvas && p.distancia(cursor) <= 10.0;
+                if (sobMouse) {
+                    gc.setFill(Color.rgb(255, 152, 0, 0.3));
+                    gc.fillOval(p.getX() - 10, p.getY() - 10, 20, 20);
+                    gc.setStroke(Color.rgb(230, 81, 0));
+                    gc.setLineWidth(2.0);
+                    gc.strokeOval(p.getX() - 10, p.getY() - 10, 20, 20);
+                    desenharEtiquetaFlutuante(gc, "Arraste para mover vértice",
+                            p.getX() + 14, p.getY() - 10, Color.rgb(230, 81, 0, 0.92), Color.WHITE);
+                } else {
+                    desenharAlca(gc, p.getX(), p.getY());
+                }
+            }
+        }
+    }
+
+    /**
+     * Desenha uma mira suave no ponto exato (com Snap aplicado) onde o próximo clique cairá.
+     */
+    private void desenharMiraCursor(GraphicsContext gc) {
+        double sx = contexto.aplicarSnap(mouseCanvasX);
+        double sy = contexto.aplicarSnap(mouseCanvasY);
+
+        gc.setStroke(Color.rgb(25, 118, 210, 0.65));
+        gc.setLineWidth(1.2);
+        gc.strokeLine(sx - 8, sy, sx + 8, sy);
+        gc.strokeLine(sx, sy - 8, sx, sy + 8);
+
+        gc.setFill(Color.rgb(25, 118, 210, 0.85));
+        gc.fillOval(sx - 2.5, sy - 2.5, 5, 5);
+
+        if (contexto.isGridSnappingHabilitado()) {
+            gc.setStroke(Color.rgb(25, 118, 210, 0.4));
+            gc.strokeOval(sx - 6, sy - 6, 12, 12);
+        }
+    }
+
+    /**
+     * Desenha um pequeno balão/pílula de texto para dicas flutuantes no Canvas.
+     */
+    private void desenharEtiquetaFlutuante(GraphicsContext gc, String texto, double x, double y, Color fundo, Color corTexto) {
+        double larguraEstimada = texto.length() * 6.5 + 14;
+        double altura = 20;
+
+        gc.setFill(fundo);
+        gc.fillRoundRect(x, y - altura + 4, larguraEstimada, altura, 8, 8);
+
+        gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 11));
+        gc.setFill(corTexto);
+        gc.fillText(texto, x + 7, y);
+    }
+
+    /**
+     * Exibe uma barra informativa discreta no topo do Canvas orientando o uso da ferramenta ativa.
+     */
+    private void desenharBannerDicaFerramenta(GraphicsContext gc, double canvasWidth) {
+        Ferramenta f = contexto.getFerramentaAtual();
+        if (f == null) return;
+
+        String mensagem;
+        if (f instanceof FerramentaDesenhar) {
+            FormaGeometrica emAndamento = contexto.getFormaEmAndamento();
+            if (emAndamento instanceof Poligono) {
+                int qtd = emAndamento.getQuantidadePontos();
+                if (qtd < 3) {
+                    mensagem = String.format("✏ Desenhando Polígono (%d/3 pontos mín.) • Clique para adicionar mais pontos • ESC para cancelar", qtd);
+                } else {
+                    mensagem = String.format("✏ Polígono com %d pontos • Clique em P1 (Início), dê duplo clique ou botão direito para fechar • ESC cancela", qtd);
+                }
+            } else {
+                mensagem = "✏ Ferramenta Polígono: Clique no Canvas para marcar o 1º vértice (P1)";
+            }
+        } else if (f instanceof FerramentaInserirForma) {
+            mensagem = "⬛ Inserir Forma: Clique e arraste no Canvas para definir o centro e o raio da figura";
+        } else if (f instanceof FerramentaEditarVertice) {
+            mensagem = "⌖ Editar Vértice: Passe o mouse sobre um vértice (alça) e arraste para remodelar a forma";
+        } else if (f instanceof FerramentaTransformar) {
+            ModoFerramenta modo = ((FerramentaTransformar) f).getModo();
+            mensagem = "↻ Transformar (" + modo + "): Selecione uma forma e arraste o mouse no Canvas";
+        } else {
+            mensagem = "↖ Selecionar / Mover: Clique em uma forma para selecionar e arraste para mover (ou arraste no fundo para caixa de seleção)";
+        }
+
+        double bannerW = Math.min(canvasWidth - 40, mensagem.length() * 6.6 + 28);
+        double bannerX = Math.max(20, (canvasWidth - bannerW) / 2.0);
+        double bannerY = 12;
+
+        gc.setFill(Color.rgb(38, 50, 56, 0.82));
+        gc.fillRoundRect(bannerX, bannerY, bannerW, 26, 12, 12);
+
+        gc.setFont(Font.font("Segoe UI", FontWeight.NORMAL, 12));
+        gc.setFill(Color.WHITE);
+        gc.fillText(mensagem, bannerX + 14, bannerY + 17);
     }
 
     private void desenharGrade(GraphicsContext gc, double w, double h) {
